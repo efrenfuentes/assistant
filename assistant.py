@@ -1,11 +1,18 @@
+import os
+import pvleopard as pvleopard
 import pvporcupine
 import pyaudio
 import struct
+import wave
+
+API_KEY = 'API_KEY_HERE'
 
 porcupine = pvporcupine.create(
-    access_key='<API_KEY>',
-    keywords=['jarvis', 'computer', 'bumblebee', 'terminator']
+    access_key= API_KEY,
+    keywords=['computer']
 )
+
+leopard = pvleopard.create(access_key=API_KEY)
 
 # Initialize PyAudio
 audio = pyaudio.PyAudio()
@@ -17,25 +24,47 @@ stream = audio.open(
     frames_per_buffer=porcupine.frame_length,
 )
 
+def record_audio(filename, duration):
+    frames = []
+
+    for _ in range(0, int(porcupine.sample_rate / porcupine.frame_length * duration)):
+        audio_data = stream.read(porcupine.frame_length, exception_on_overflow=False)
+        audio_frame = struct.unpack_from("h" * porcupine.frame_length, audio_data)
+        frames.append(audio_data)
+
+    with wave.open(filename, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(audio.get_sample_size(pyaudio.paInt16))
+        wf.setframerate(porcupine.sample_rate)
+        wf.writeframes(b''.join(frames))
+
 # Main loop
 print("Listening for keywords...")
 try:
     while True:
         # Read audio data from the microphone
-        audio_data = stream.read(porcupine.frame_length)
+        audio_data = stream.read(porcupine.frame_length, exception_on_overflow=False)
         audio_frame = struct.unpack_from("h" * porcupine.frame_length, audio_data)
 
         # Process audio frame with Porcupine
         keyword_index = porcupine.process(audio_frame)
 
         if keyword_index == 0:
-            print("Keyword 0 detected!")
-        elif keyword_index == 1:
-            print("Keyword 1 detected!")
-        elif keyword_index == 2:
-            print("Keyword 2 detected!")
-        elif keyword_index == 3:
-            print("Keyword 3 detected!")
+            print("Keyword detected! Recording speech...")
+
+            # Record speech for a fixed duration
+            duration_seconds = 5
+            audio_file = "recorded_audio.wav"
+            record_audio(audio_file, duration_seconds)
+
+            # Transcribe the recorded speech using Leopard
+            print("Transcribing speech...")
+            transcript, words = leopard.process_file(os.path.abspath(audio_file))
+            print("Transcript:", transcript)
+
+            # Remove the audio file if you don't need it
+            os.remove(audio_file)
+
 finally:
     # Clean up resources
     stream.stop_stream()
