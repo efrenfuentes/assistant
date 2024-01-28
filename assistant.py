@@ -1,7 +1,9 @@
+import objc
 import os
 import pvleopard as pvleopard
 import pvporcupine
 import pyaudio
+import pyttsx3
 import struct
 import wave
 
@@ -13,6 +15,13 @@ porcupine = pvporcupine.create(
 )
 
 leopard = pvleopard.create(access_key=API_KEY)
+
+# Initialize the voice library
+engine = pyttsx3.init('nsss', debug=True)
+
+# Saying some fun welcome message with instructions for the user
+engine.say("Hello, I'm Computer, your personal assistant. Say my name and ask me anything:")
+engine.runAndWait()
 
 # Initialize PyAudio
 audio = pyaudio.PyAudio()
@@ -61,6 +70,9 @@ try:
             print("Transcribing speech...")
             transcript, words = leopard.process_file(os.path.abspath(audio_file))
             print("Transcript:", transcript)
+
+            engine.say(transcript)
+            engine.runAndWait()
 
             # Remove the audio file if you don't need it
             os.remove(audio_file)
