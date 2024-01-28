@@ -1,4 +1,23 @@
-import objc
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Description: This is the main file for the Computer assistant.
+#              It uses Porcupine for keyword detection, Leopard for speech-to-text,
+#              OpenAI for chat, and NSSpeechSynthesizer for text-to-speech.
+#              It is meant to be run on macOS.
+#              It is meant to be run with Python 3.10.
+#              It is meant to be run with the following dependencies installed:
+#               - pvporcupine
+#               - pvleopard
+#               - openai
+#               - pyaudio
+#               - pyttsx3
+#               - struct
+#               - wave
+#              It is meant to be run after replacing env/lib/python3.10/sites-packages/pyttsx3/drivers/nsss.py with the following file:
+#               - nsss.py
+
+from openai import OpenAI
 import os
 import pvleopard as pvleopard
 import pvporcupine
@@ -7,21 +26,32 @@ import pyttsx3
 import struct
 import wave
 
-API_KEY = 'API_KEY_HERE'
 
+PICO_VOICE_API_KEY = 'REPLACE WITH YOUR API KEY'
+OPENAI_API_KEY = 'REPLACE WITH YOUR API KEY'
+
+
+# Initialize Porcupine API client (for keyword detection)
 porcupine = pvporcupine.create(
-    access_key= API_KEY,
+    access_key= PICO_VOICE_API_KEY,
     keywords=['computer']
 )
 
-leopard = pvleopard.create(access_key=API_KEY)
 
-# Initialize the voice library
+# Initialize Leopard API client (for speech-to-text)
+leopard = pvleopard.create(access_key=PICO_VOICE_API_KEY)
+
+
+# Initialize OpenAI API client
+openai_client = OpenAI(
+    api_key=OPENAI_API_KEY,
+)
+
+
+# Initialize text to speech engine
 engine = pyttsx3.init('nsss', debug=True)
+engine.setProperty('rate', 185)
 
-# Saying some fun welcome message with instructions for the user
-engine.say("Hello, I'm Computer, your personal assistant. Say my name and ask me anything:")
-engine.runAndWait()
 
 # Initialize PyAudio
 audio = pyaudio.PyAudio()
@@ -33,6 +63,40 @@ stream = audio.open(
     frames_per_buffer=porcupine.frame_length,
 )
 
+# Function to speak text:
+#  - text: string to speak
+#
+# Example usage:
+#  speak("Hello world!")
+def speak(text):
+    engine.say(text)
+    engine.runAndWait()
+
+
+# Function to chat with OpenAI:
+#  - prompt: string to prompt the AI with
+#   (e.g. "What is the meaning of life?")
+#
+# Example usage:
+#  openai_chat("What is the meaning of life?")
+def openai_chat(prompt):
+    response = openai_client.chat.completions.create(
+
+        model="gpt-4",
+        messages=[{"role": "assistant",
+                   "content": prompt}],
+
+        temperature=0.6,
+    )
+
+    return response.choices[0].message.content
+
+# Function to record audio:
+#  - filename: name of the file to save the audio to
+#  - duration: duration of the recording in seconds
+#
+# Example usage:
+#  record_audio("recorded_audio.wav", 5)
 def record_audio(filename, duration):
     frames = []
 
@@ -47,39 +111,58 @@ def record_audio(filename, duration):
         wf.setframerate(porcupine.sample_rate)
         wf.writeframes(b''.join(frames))
 
-# Main loop
-print("Listening for keywords...")
-try:
-    while True:
-        # Read audio data from the microphone
-        audio_data = stream.read(porcupine.frame_length, exception_on_overflow=False)
-        audio_frame = struct.unpack_from("h" * porcupine.frame_length, audio_data)
+# Function to get the activation word:
+#  - returns True if the activation word was detected, False otherwise
+#
+# Example usage:
+#  if get_activation_word():
+#      print("Activation word detected!")
+def get_activation_word():
+    # Read audio data from the microphone
+    audio_data = stream.read(porcupine.frame_length, exception_on_overflow=False)
+    audio_frame = struct.unpack_from("h" * porcupine.frame_length, audio_data)
 
-        # Process audio frame with Porcupine
-        keyword_index = porcupine.process(audio_frame)
+    # Process audio frame with Porcupine
+    keyword_index = porcupine.process(audio_frame)
 
-        if keyword_index == 0:
-            print("Keyword detected! Recording speech...")
+    return keyword_index == 0
 
-            # Record speech for a fixed duration
-            duration_seconds = 5
-            audio_file = "recorded_audio.wav"
-            record_audio(audio_file, duration_seconds)
 
-            # Transcribe the recorded speech using Leopard
-            print("Transcribing speech...")
-            transcript, words = leopard.process_file(os.path.abspath(audio_file))
-            print("Transcript:", transcript)
+if __name__ == '__main__':
+    try:
+        # Saying a welcome message with instructions for the user
+        speak("Hello, I'm Computer, your personal assistant. Say my name and ask me anything:")
+        print("Listening...")
 
-            engine.say(transcript)
-            engine.runAndWait()
+        # Main loop
+        while True:
+            if get_activation_word():
+                print("Activation word detected! Recording speech...")
 
-            # Remove the audio file if you don't need it
-            os.remove(audio_file)
+                # Record speech for a fixed duration (5 seconds)
+                duration_seconds = 5
+                audio_file = "recorded_audio.wav"
+                record_audio(audio_file, duration_seconds)
 
-finally:
-    # Clean up resources
-    stream.stop_stream()
-    stream.close()
-    audio.terminate()
-    porcupine.delete()
+                # Transcribe the recorded speech using Leopard
+                print("Transcribing speech...")
+                transcript, words = leopard.process_file(os.path.abspath(audio_file))
+                print("Transcript:", transcript)
+
+                response = openai_chat(transcript)
+
+                # Print the response
+                print(response)
+
+                # Speak the response
+                speak(response)
+
+                # Remove the audio file if you don't need it
+                os.remove(audio_file)
+
+    finally:
+        # Clean up resources
+        stream.stop_stream()
+        stream.close()
+        audio.terminate()
+        porcupine.delete()
