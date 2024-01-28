@@ -9,7 +9,8 @@
 #              It is meant to be run with the following dependencies installed:
 #               - pvporcupine
 #               - pvleopard
-#               - openai
+#               - google-generativeai
+#               - langchain-google-genai
 #               - pyaudio
 #               - pyttsx3
 #               - struct
@@ -17,7 +18,7 @@
 #              It is meant to be run after replacing env/lib/python3.10/sites-packages/pyttsx3/drivers/nsss.py with the following file:
 #               - nsss.py
 
-from openai import OpenAI
+import google.generativeai as genai
 import os
 import pvleopard as pvleopard
 import pvporcupine
@@ -27,8 +28,8 @@ import struct
 import wave
 
 
-PICO_VOICE_API_KEY = 'REPLACE WITH YOUR API KEY'
-OPENAI_API_KEY = 'REPLACE WITH YOUR API KEY'
+PICO_VOICE_API_KEY = 'REPLACE_WITH_YOUR_API_KEY'
+GOOGLE_API_KEY = 'REPLACE_WITH_YOUR_API_KEY'
 
 
 # Initialize Porcupine API client (for keyword detection)
@@ -42,10 +43,9 @@ porcupine = pvporcupine.create(
 leopard = pvleopard.create(access_key=PICO_VOICE_API_KEY)
 
 
-# Initialize OpenAI API client
-openai_client = OpenAI(
-    api_key=OPENAI_API_KEY,
-)
+# Initialize Gemini API client
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel('gemini-pro')
 
 
 # Initialize text to speech engine
@@ -73,23 +73,17 @@ def speak(text):
     engine.runAndWait()
 
 
-# Function to chat with OpenAI:
+# Function to chat with Gemini:
 #  - prompt: string to prompt the AI with
 #   (e.g. "What is the meaning of life?")
 #
 # Example usage:
-#  openai_chat("What is the meaning of life?")
-def openai_chat(prompt):
-    response = openai_client.chat.completions.create(
+#  gemini_chat("What is the meaning of life?")
+def gemini_chat(prompt):
+    generation_config = genai.types.GenerationConfig(max_output_tokens=256, temperature=0.6)
+    response = model.generate_content(prompt, generation_config=generation_config)
 
-        model="gpt-4",
-        messages=[{"role": "assistant",
-                   "content": prompt}],
-
-        temperature=0.6,
-    )
-
-    return response.choices[0].message.content
+    return response.text
 
 # Function to record audio:
 #  - filename: name of the file to save the audio to
@@ -149,7 +143,7 @@ if __name__ == '__main__':
                 transcript, words = leopard.process_file(os.path.abspath(audio_file))
                 print("Transcript:", transcript)
 
-                response = openai_chat(transcript)
+                response = gemini_chat(transcript)
 
                 # Print the response
                 print(response)
